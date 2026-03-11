@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Row = {
   keyword: string;
@@ -9,31 +9,43 @@ type Row = {
   countPrev7d: number;
   share7d: number;
   sharePrev7d: number;
+  score: number;
 };
 
-const sampleRows: Row[] = [
-  { keyword: "agent", theme: "agentic_systems", count7d: 52, countPrev7d: 31, share7d: 0.17, sharePrev7d: 0.11 },
-  { keyword: "multimodal", theme: "multimodal", count7d: 38, countPrev7d: 24, share7d: 0.13, sharePrev7d: 0.09 },
-  { keyword: "rag", theme: "retrieval_knowledge", count7d: 29, countPrev7d: 21, share7d: 0.1, sharePrev7d: 0.08 },
-  { keyword: "transformer", theme: "foundation_models", count7d: 64, countPrev7d: 60, share7d: 0.2, sharePrev7d: 0.19 },
-];
-
-function accel(r: Row) {
-  const growth = (r.count7d - r.countPrev7d) / Math.max(r.countPrev7d, 1);
-  const shareDelta = r.share7d - r.sharePrev7d;
-  return 0.6 * growth + 0.4 * shareDelta;
-}
+type SignalResponse = {
+  mode: string;
+  updatedAt: string;
+  windows?: {
+    current: string;
+    previous: string;
+    papers7d: number;
+    papersPrev7d: number;
+  };
+  items: Row[];
+};
 
 export default function Home() {
   const [q, setQ] = useState("");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string>("");
+  const [meta, setMeta] = useState<SignalResponse["windows"]>();
+
+  useEffect(() => {
+    const load = async () => {
+      const res = await fetch("/api/signals", { cache: "no-store" });
+      const data: SignalResponse = await res.json();
+      setRows(data.items ?? []);
+      setUpdatedAt(data.updatedAt ?? "");
+      setMeta(data.windows);
+    };
+    load();
+  }, []);
 
   const filtered = useMemo(() => {
-    const rows = sampleRows
-      .filter((r) => (q ? r.keyword.includes(q.toLowerCase()) || r.theme.includes(q.toLowerCase()) : true))
-      .map((r) => ({ ...r, score: accel(r) }))
-      .sort((a, b) => b.score - a.score);
-    return rows;
-  }, [q]);
+    return rows.filter((r) =>
+      q ? r.keyword.includes(q.toLowerCase()) || r.theme.includes(q.toLowerCase()) : true,
+    );
+  }, [q, rows]);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -53,8 +65,8 @@ export default function Home() {
       </section>
 
       <section className="mt-6 rounded-xl border border-black/10 p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">Signal Explorer (test mode)</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Signal Explorer (live arXiv mode)</h2>
           <input
             className="rounded-md border border-black/15 px-3 py-1.5 text-sm"
             placeholder="Filter keyword/theme"
@@ -62,6 +74,13 @@ export default function Home() {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
+
+        <p className="mt-2 text-xs text-black/60">
+          {updatedAt ? `Updated: ${new Date(updatedAt).toLocaleString()}` : "Loading..."}
+          {meta
+            ? ` • Papers: ${meta.papers7d} (last 7d) vs ${meta.papersPrev7d} (prior 7d)`
+            : ""}
+        </p>
 
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -86,6 +105,13 @@ export default function Home() {
                   <td>{r.score.toFixed(3)}</td>
                 </tr>
               ))}
+              {!filtered.length && (
+                <tr>
+                  <td colSpan={6} className="py-4 text-center text-black/50">
+                    No rows yet. Try again in a moment or clear filter.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
