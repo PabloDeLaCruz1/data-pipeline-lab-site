@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 type KeywordDef = { keyword: string; theme: string };
-type Paper = { published: Date; text: string };
+type Paper = { text: string };
 
 const KEYWORDS: KeywordDef[] = [
   { keyword: "agent", theme: "agentic_systems" },
@@ -20,45 +20,53 @@ const KEYWORDS: KeywordDef[] = [
   { keyword: "hallucination", theme: "safety_governance" },
 ];
 
+function toArxivDate(d: Date) {
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}${hh}${mi}`;
+}
+
 function extractEntries(xml: string): Paper[] {
   const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) ?? [];
   return entries
     .map((entry) => {
       const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? "";
       const summary = entry.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] ?? "";
-      const publishedRaw = entry.match(/<published>(.*?)<\/published>/)?.[1];
-      if (!publishedRaw) return null;
-      const published = new Date(publishedRaw);
-      if (Number.isNaN(published.getTime())) return null;
       const clean = `${title} ${summary}`
         .replace(/\s+/g, " ")
         .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
         .toLowerCase();
-      return { published, text: clean };
+      return { text: clean };
     })
-    .filter(Boolean) as Paper[];
+    .filter((p) => p.text.length > 0);
 }
 
-function withinDays(date: Date, days: number) {
-  const now = new Date();
-  const ms = days * 24 * 60 * 60 * 1000;
-  return now.getTime() - date.getTime() <= ms;
+async function fetchWindow(from: Date, to: Date): Promise<Paper[]> {
+  const categories = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:stat.ML";
+  const dateRange = `submittedDate:[${toArxivDate(from)}+TO+${toArxivDate(to)}]`;
+  const query = `${categories}+AND+${dateRange}`;
+  const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=2000`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  const xml = await res.text();
+  return extractEntries(xml);
 }
 
 export async function GET() {
   try {
-    const query = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:stat.ML";
-    const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=500`;
+    const now = new Date();
+    const startCurrent = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startPrevious = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const res = await fetch(url, { cache: "no-store" });
-    const xml = await res.text();
-    const papers = extractEntries(xml);
-
-    const papers7d = papers.filter((p) => withinDays(p.published, 7));
-    const papers14d = papers.filter((p) => withinDays(p.published, 14));
-    const papersPrev7d = papers14d.filter((p) => !withinDays(p.published, 7));
+    const [papers7d, papersPrev7d] = await Promise.all([
+      fetchWindow(startCurrent, now),
+      fetchWindow(startPrevious, startCurrent),
+    ]);
 
     const items = KEYWORDS.map((k) => {
       const count7d = papers7d.filter((p) => p.text.includes(k.keyword)).length;
@@ -77,7 +85,7 @@ export async function GET() {
         score,
       };
     })
-      .filter((r) => r.count7d >= 3)
+      .filter((r) => r.count7d >= 3 || r.countPrev7d >= 3)
       .sort((a, b) => b.score - a.score)
       .slice(0, 20);
 
