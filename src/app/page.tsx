@@ -70,7 +70,12 @@ export default function Home() {
             </span>
             {meta ? (
               <span className="rounded-full border border-indigo-300/60 bg-indigo-100 px-3 py-1 text-indigo-700 dark:border-indigo-700/70 dark:bg-indigo-900/30 dark:text-indigo-300">
-                Papers {meta.papers7d} vs {meta.papersPrev7d}
+                Sampled papers {meta.papers7d} vs {meta.papersPrev7d}
+              </span>
+            ) : null}
+            {meta && (meta.papers7d >= 2000 || meta.papersPrev7d >= 2000) ? (
+              <span className="rounded-full border border-amber-300/60 bg-amber-100 px-3 py-1 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/30 dark:text-amber-300">
+                capped sample (max 2000/window)
               </span>
             ) : null}
           </div>
