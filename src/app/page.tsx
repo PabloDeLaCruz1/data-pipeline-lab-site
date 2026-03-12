@@ -12,6 +12,9 @@ type Row = {
   score: number;
 };
 
+type Point = { date: string; value: number };
+type Series = { key: string; label: string; points: Point[] };
+
 type SignalResponse = {
   mode: string;
   updatedAt: string;
@@ -22,10 +25,73 @@ type SignalResponse = {
     papersPrev7d: number;
   };
   items: Row[];
+  history?: {
+    days: string[];
+    keywords: Series[];
+    themes: Series[];
+  };
 };
 
 function themeLabel(theme: string) {
   return theme.replaceAll("_", " ");
+}
+
+const palette = ["#6366f1", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
+
+function MiniChart({ title, series }: { title: string; series: Series[] }) {
+  const width = 900;
+  const height = 260;
+  const pad = 30;
+  const allValues = series.flatMap((s) => s.points.map((p) => p.value));
+  const max = Math.max(1, ...allValues);
+  const pointCount = Math.max(1, series[0]?.points.length ?? 1);
+
+  const linePath = (points: Point[]) =>
+    points
+      .map((p, i) => {
+        const x = pad + (i * (width - pad * 2)) / (pointCount - 1 || 1);
+        const y = height - pad - (p.value / max) * (height - pad * 2);
+        return `${i === 0 ? "M" : "L"}${x},${y}`;
+      })
+      .join(" ");
+
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <h3 className="text-base font-semibold">{title}</h3>
+      <div className="mt-3 overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] min-w-[900px] w-full">
+          <rect x="0" y="0" width={width} height={height} fill="transparent" />
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+            const y = height - pad - t * (height - pad * 2);
+            return <line key={t} x1={pad} y1={y} x2={width - pad} y2={y} stroke="rgba(148,163,184,0.25)" />;
+          })}
+
+          {series.map((s, idx) => (
+            <path
+              key={s.key}
+              d={linePath(s.points)}
+              fill="none"
+              stroke={palette[idx % palette.length]}
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+        </svg>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        {series.map((s, idx) => (
+          <span
+            key={s.key}
+            className="rounded-full border px-2 py-1"
+            style={{ borderColor: `${palette[idx % palette.length]}66`, color: palette[idx % palette.length] }}
+          >
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -33,6 +99,7 @@ export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string>("");
   const [meta, setMeta] = useState<SignalResponse["windows"]>();
+  const [history, setHistory] = useState<SignalResponse["history"]>();
 
   useEffect(() => {
     const load = async () => {
@@ -41,6 +108,7 @@ export default function Home() {
       setRows(data.items ?? []);
       setUpdatedAt(data.updatedAt ?? "");
       setMeta(data.windows);
+      setHistory(data.history);
     };
     load();
   }, []);
@@ -63,7 +131,7 @@ export default function Home() {
 
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
             <span className="rounded-full border border-emerald-300/60 bg-emerald-100 px-3 py-1 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/30 dark:text-emerald-300">
-              API: live-arXiv
+              API: cached-arXiv
             </span>
             <span className="rounded-full border border-slate-300/60 bg-slate-100 px-3 py-1 text-slate-700 dark:border-slate-700/70 dark:bg-slate-800 dark:text-slate-300">
               Updated: {updatedAt ? new Date(updatedAt).toLocaleString() : "loading..."}
@@ -82,13 +150,14 @@ export default function Home() {
         </div>
 
         <section className="mt-6 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-lg font-semibold">Pipeline Scope</h2>
-          <ul className="mt-3 grid gap-2 text-sm text-slate-700 dark:text-slate-300 sm:grid-cols-2">
-            <li>• Bronze: ingest arXiv metadata (title, abstract, categories, publish date)</li>
-            <li>• Silver: normalize text and publication dimensions</li>
-            <li>• Gold: keyword daily metrics + trend acceleration score</li>
-            <li>• Ops: Prefect orchestration + dbt transforms + quality checks</li>
-          </ul>
+          <h2 className="text-lg font-semibold">Historical Charts (30d)</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Trend lines provide timeline context beyond the 7-day snapshot.
+          </p>
+          <div className="mt-4 grid gap-4">
+            <MiniChart title="Keyword Momentum" series={history?.keywords ?? []} />
+            <MiniChart title="Theme Momentum" series={history?.themes ?? []} />
+          </div>
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
