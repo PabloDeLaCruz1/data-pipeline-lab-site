@@ -42,9 +42,23 @@ function MiniChart({ title, series }: { title: string; series: Series[] }) {
   const width = 900;
   const height = 260;
   const pad = 30;
-  const allValues = series.flatMap((s) => s.points.map((p) => p.value));
+
+  // Trim trailing dates where all series are zero to avoid misleading end-of-line drop.
+  const length = series[0]?.points.length ?? 0;
+  let lastNonZeroIdx = -1;
+  for (let i = 0; i < length; i += 1) {
+    const dayTotal = series.reduce((sum, s) => sum + (s.points[i]?.value ?? 0), 0);
+    if (dayTotal > 0) lastNonZeroIdx = i;
+  }
+
+  const trimmedSeries =
+    lastNonZeroIdx >= 0
+      ? series.map((s) => ({ ...s, points: s.points.slice(0, lastNonZeroIdx + 1) }))
+      : series;
+
+  const allValues = trimmedSeries.flatMap((s) => s.points.map((p) => p.value));
   const max = Math.max(1, ...allValues);
-  const pointCount = Math.max(1, series[0]?.points.length ?? 1);
+  const pointCount = Math.max(1, trimmedSeries[0]?.points.length ?? 1);
 
   const linePath = (points: Point[]) =>
     points
@@ -66,7 +80,7 @@ function MiniChart({ title, series }: { title: string; series: Series[] }) {
             return <line key={t} x1={pad} y1={y} x2={width - pad} y2={y} stroke="rgba(148,163,184,0.25)" />;
           })}
 
-          {series.map((s, idx) => (
+          {trimmedSeries.map((s, idx) => (
             <path
               key={s.key}
               d={linePath(s.points)}
