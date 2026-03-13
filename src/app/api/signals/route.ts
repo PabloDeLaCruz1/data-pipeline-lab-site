@@ -35,12 +35,12 @@ function dayKey(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-function buildDateRange(days = 30) {
-  const now = new Date();
+function buildDateRange(days = 30, endDate?: string) {
+  const end = endDate ? new Date(`${endDate}T00:00:00.000Z`) : new Date();
   const arr: string[] = [];
   for (let i = days - 1; i >= 0; i -= 1) {
-    const d = new Date(now);
-    d.setUTCDate(now.getUTCDate() - i);
+    const d = new Date(end);
+    d.setUTCDate(end.getUTCDate() - i);
     arr.push(dayKey(d));
   }
   return arr;
@@ -73,7 +73,14 @@ export async function GET() {
     const parsed = JSON.parse(raw);
     const papers: CachedPaper[] = parsed.papers ?? [];
 
-    const dates = buildDateRange(30);
+    const latestPaperDate = papers.length
+      ? papers
+          .map((p) => p.published.slice(0, 10))
+          .sort()
+          .at(-1)
+      : undefined;
+
+    const dates = buildDateRange(30, latestPaperDate);
     const keywordSeries = buildKeywordSeries(papers, dates);
     const themeSeries = buildThemeSeries(papers, dates);
 

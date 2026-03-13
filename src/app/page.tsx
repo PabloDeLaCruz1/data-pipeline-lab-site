@@ -152,7 +152,7 @@ export default function Home() {
         <section className="mt-6 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-lg font-semibold">Historical Charts (30d)</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Trend lines provide timeline context beyond the 7-day snapshot.
+            Trend lines provide timeline context beyond the 7-day snapshot (window ends at latest day with data).
           </p>
           <div className="mt-4 grid gap-4">
             <MiniChart title="Keyword Momentum" series={history?.keywords ?? []} />
